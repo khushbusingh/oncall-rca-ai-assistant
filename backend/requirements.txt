@@ -1,0 +1,25 @@
+# Web framework
+fastapi>=0.109,<0.115
+uvicorn[standard]>=0.27
+
+# Database
+sqlalchemy>=2.0
+aiosqlite>=0.19
+greenlet>=3.0  # required for SQLAlchemy async
+
+# RAG & embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.2
+
+# Document parsing
+pypdf>=4.0
+python-docx>=1.1
+
+# LLM (optional - for generated answers)
+openai>=1.12
+httpx>=0.26
+
+# Utils
+python-multipart>=0.0.6
+pydantic>=2.5
+pydantic-settings>=2.1
