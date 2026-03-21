@@ -107,3 +107,29 @@ Open http://localhost:8000/docs for Swagger UI.
 - **Start command:** `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
 This repo includes [`render.yaml`](render.yaml) (Blueprint) with `rootDir: backend` so imports match local `cd backend` usage. Mount a **persistent disk** on `backend/data` if you need SQLite/Chroma to survive redeploys.
+
+## Deploy frontend on Vercel (API on Render)
+
+The browser must call your Render API by **full URL**; the Vite dev proxy only applies locally.
+
+1. In **Vercel** → your project → **Settings → Environment Variables**, add (all deployment targets you use, e.g. Production):
+
+   | Name | Value |
+   |------|--------|
+   | `VITE_API_URL` | `https://oncall-rca-api.onrender.com` |
+
+   No trailing slash. Redeploy after saving (Vite bakes this in at build time).
+
+2. **Root Directory:** if the repo is this monorepo, set **Root Directory** to `frontend` so **Build Command** is `npm run build` and **Output Directory** is `dist`.
+
+3. Local dev stays unchanged: do **not** set `VITE_API_URL` (or use `frontend/.env.example` as a reference only); `npm run dev` keeps using relative `/api` → Vite proxy.
+
+Backend CORS is already permissive (`allow_origins=["*"]`); no backend change required for a Vercel origin.
+
+### Vercel build: `ERR_MODULE_NOT_FOUND` during `vite build`
+
+Usually one of:
+
+1. **Wrong root** — In Vercel → **Settings → General → Root Directory**, set **`frontend`** (for this monorepo). If the build runs from the repo root, `vite` is never installed.
+2. **Node too old** — Vite 5 needs **Node ≥ 18**. This repo includes **`frontend/.nvmrc`** (`20`); Vercel will pick that up. You can also set **Settings → Node.js Version** to **20.x**.
+3. **Missing install** — `vite` and `@vitejs/plugin-react` are listed under **`dependencies`** so they are always installed even when install runs with production-like flags.
