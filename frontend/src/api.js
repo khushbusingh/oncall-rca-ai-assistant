@@ -1,4 +1,6 @@
-const BASE = '';
+// Local dev: leave unset → same-origin + Vite proxy to backend.
+// Production (e.g. Vercel): set VITE_API_URL=https://oncall-rca-api.onrender.com in the host env.
+const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
