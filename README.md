@@ -91,3 +91,19 @@ With `OPENAI_API_KEY`: embeddings and answers use OpenAI (no Hugging Face). With
 - `POST /api/search` (JSON: `query`, optional `service_id`, `top_k`)
 
 Open http://localhost:8000/docs for Swagger UI.
+
+## Deploy on Render
+
+`ModuleNotFoundError: No module named 'app'` happens if Uvicorn runs from the **repository root** instead of **`backend/`**.
+
+**Option A — Dashboard:** set **Root Directory** to `backend`, then:
+
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+**Option B — Stay at repo root:** use:
+
+- **Build command:** `cd backend && pip install -r requirements.txt`
+- **Start command:** `cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+This repo includes [`render.yaml`](render.yaml) (Blueprint) with `rootDir: backend` so imports match local `cd backend` usage. Mount a **persistent disk** on `backend/data` if you need SQLite/Chroma to survive redeploys.
