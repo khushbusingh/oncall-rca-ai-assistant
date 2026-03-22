@@ -19,6 +19,7 @@ from app.database import get_db, init_db, Service, KnowledgeEntry, DocumentUploa
 from app.document_loader import load_and_chunk_file
 from app.rag import add_chunks_to_collection, query_collection, delete_chunks_by_ids
 from app.config import settings
+from app.search_cache import get_search_cached, set_search_cached
 
 app = FastAPI(title="CRM On-Call RAG Assistant", version="1.0.0")
 
@@ -419,10 +420,26 @@ def _get_latest_upload_ids(db_uploads: list) -> List[str]:
 
 
 # --- RAG Search ---
+def _normalize_search_query(q: str) -> str:
+    """Stable key for caching: collapse whitespace, lowercase."""
+    return re.sub(r"\s+", " ", (q or "").strip()).lower()[:4000]
+
+
 @app.post("/api/search", response_model=SearchResponse)
 async def search(body: SearchQuery, db: AsyncSession = Depends(get_db)):
     logger.info("search request: query=%r service_id=%s top_k=%s", body.query, body.service_id, body.top_k)
     top_k = body.top_k or settings.top_k_retrieve
+    query_norm = _normalize_search_query(body.query)
+    if settings.enable_search_cache and query_norm:
+        cached = get_search_cached(
+            query_norm,
+            body.service_id,
+            top_k,
+            max_entries=settings.search_cache_max_entries,
+        )
+        if cached is not None:
+            logger.info("search cache hit (query_norm len=%s)", len(query_norm))
+            return SearchResponse.model_validate(cached)
     q = select(DocumentUpload).order_by(desc(DocumentUpload.created_at))
     if body.service_id is not None:
         q = q.where(DocumentUpload.service_id == body.service_id)
@@ -496,7 +513,16 @@ async def search(body: SearchQuery, db: AsyncSession = Depends(get_db)):
             doc = doc[:preview_len].rstrip() + "…"
         chunk_responses.append(SearchResultChunk(document=doc, metadata=meta, distance=c.get("distance")))
     answer = await _generate_answer(body.query, context_texts)
-    return SearchResponse(chunks=chunk_responses, answer=answer)
+    response = SearchResponse(chunks=chunk_responses, answer=answer)
+    if settings.enable_search_cache and query_norm:
+        set_search_cached(
+            query_norm,
+            body.service_id,
+            top_k,
+            response.model_dump(mode="json"),
+            max_entries=settings.search_cache_max_entries,
+        )
+    return response
 
 
 # --- Health ---

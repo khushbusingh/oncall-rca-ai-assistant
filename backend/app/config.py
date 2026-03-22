@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     search_candidates_multiplier: int = 3
     # Max chars per chunk in search response (reduces payload and UI clutter)
     chunk_preview_chars: int = 350
+    # Search cache: in-process LRU by default. Set redis_url to share cache across workers/replicas.
+    enable_search_cache: bool = True
+    search_cache_max_entries: int = 256  # LRU cap when using in-memory backend
+    redis_url: str = ""  # e.g. redis://localhost:6379/0 — empty means in-memory only
+    search_cache_ttl_seconds: int = 86400  # Redis key TTL (orphaned keys after version bump)
     
     class Config:
         env_file = ".env"

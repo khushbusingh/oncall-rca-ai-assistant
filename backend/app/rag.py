@@ -10,9 +10,13 @@ logger = logging.getLogger(__name__)
 from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings
+from app.search_cache import invalidate_search_cache
 
 # Lazy-loaded embedding model (only when not using OpenAI)
 _embedding_model = None
+# Reuse one Chroma client + collection (avoid reconnect cost per request)
+_chroma_client = None
+_collection_cache: dict = {}
 
 
 def _use_openai_embeddings() -> bool:
@@ -106,19 +110,24 @@ def _get_sentence_transformer():
 
 
 def get_chroma_client():
-    """Chroma client with persistence."""
-    return chromadb.PersistentClient(
-        path=settings.chroma_persist_dir,
-        settings=ChromaSettings(anonymized_telemetry=False),
-    )
+    """Chroma client with persistence (singleton)."""
+    global _chroma_client
+    if _chroma_client is None:
+        _chroma_client = chromadb.PersistentClient(
+            path=settings.chroma_persist_dir,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+    return _chroma_client
 
 
 def get_or_create_collection(name: str = "oncall_knowledge"):
-    client = get_chroma_client()
-    return client.get_or_create_collection(
-        name=name,
-        metadata={"description": "On-call knowledge base chunks"},
-    )
+    if name not in _collection_cache:
+        client = get_chroma_client()
+        _collection_cache[name] = client.get_or_create_collection(
+            name=name,
+            metadata={"description": "On-call knowledge base chunks"},
+        )
+    return _collection_cache[name]
 
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
@@ -149,6 +158,7 @@ def add_chunks_to_collection(
         m2 = {k: (str(v) if not isinstance(v, (str, int, float, bool)) else v) for k, v in m.items()}
         meta_clean.append(m2)
     coll.add(documents=chunks, embeddings=embeddings, metadatas=meta_clean, ids=ids)
+    invalidate_search_cache()
 
 
 def query_collection(
@@ -191,6 +201,7 @@ def delete_chunks_by_ids(ids: List[str], collection_name: str = "oncall_knowledg
         return
     coll = get_or_create_collection(collection_name)
     coll.delete(ids=ids)
+    invalidate_search_cache()
 
 
 def delete_chunks_by_metadata(
@@ -202,3 +213,4 @@ def delete_chunks_by_metadata(
         return
     coll = get_or_create_collection(collection_name)
     coll.delete(where=where)
+    invalidate_search_cache()
