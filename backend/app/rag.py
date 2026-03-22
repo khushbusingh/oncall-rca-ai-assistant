@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings
+from app.embedding_cache import get_cached_query_embedding, set_cached_query_embedding
 from app.search_cache import invalidate_search_cache
 
 # Lazy-loaded embedding model (only when not using OpenAI)
@@ -174,11 +175,19 @@ def query_collection(
     except Exception:
         coll_count = None
     logger.info("query_collection: collection=%s count=%s filter=%s top_k=%s", collection_name, coll_count, filter_metadata, top_k)
-    if _use_openai_embeddings():
+    use_openai = _use_openai_embeddings()
+    cached_vec = get_cached_query_embedding(query, use_openai=use_openai)
+    if cached_vec is not None:
+        q_embedding = [cached_vec]
+    elif use_openai:
         q_embedding = _embed_openai([query])
+        if q_embedding and q_embedding[0] is not None:
+            set_cached_query_embedding(query, q_embedding[0], use_openai=True)
     else:
         model = _get_sentence_transformer()
         q_embedding = model.encode([query], show_progress_bar=False).tolist()
+        if q_embedding and q_embedding[0] is not None:
+            set_cached_query_embedding(query, q_embedding[0], use_openai=False)
     kwargs = {"query_embeddings": q_embedding, "n_results": top_k, "include": ["documents", "metadatas", "distances"]}
     if filter_metadata:
         kwargs["where"] = filter_metadata

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     search_cache_max_entries: int = 256  # LRU cap when using in-memory backend
     redis_url: str = ""  # e.g. redis://localhost:6379/0 — empty means in-memory only
     search_cache_ttl_seconds: int = 86400  # Redis key TTL (orphaned keys after version bump)
+    # Query embedding cache (same text → same vector; keys include embedding model name)
+    enable_embedding_cache: bool = True
+    embedding_cache_max_entries: int = 512  # LRU when using in-memory backend
+    embedding_cache_ttl_seconds: int = 86400  # Redis TTL for embedding keys
     
     class Config:
         env_file = ".env"

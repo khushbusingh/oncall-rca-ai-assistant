@@ -21,6 +21,7 @@ from collections import OrderedDict
 from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
+from app.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -31,52 +32,16 @@ _memory_cache: OrderedDict[Tuple[str, Optional[int], int], Tuple[int, Dict[str, 
 REDIS_VER_KEY = "oncall:search:ver"
 REDIS_ENTRY_PREFIX = "oncall:search:e:"
 
-_redis_client = None
-_redis_gave_up = False  # True after connect failure when redis_url was set (use memory until restart)
-_redis_warned = False
-
 
 def _digest_key(query_norm: str, service_id: Optional[int], top_k: int) -> str:
     raw = f"{query_norm}\x00{service_id}\x00{top_k}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
-def _get_redis():
-    """Return a redis client, or None to use in-memory cache."""
-    global _redis_client, _redis_gave_up, _redis_warned
-    url = (getattr(settings, "redis_url", None) or "").strip()
-    if not url:
-        return None
-    if _redis_gave_up:
-        return None
-    if _redis_client is not None:
-        return _redis_client
-    with _lock:
-        if _redis_client is not None:
-            return _redis_client
-        try:
-            import redis as redis_lib
-
-            r = redis_lib.from_url(url, decode_responses=True, socket_connect_timeout=2.0)
-            r.ping()
-            _redis_client = r
-            logger.info("Search cache backend: Redis (%s)", url.split("@")[-1] if "@" in url else "configured")
-            return _redis_client
-        except Exception as e:
-            _redis_gave_up = True
-            if not _redis_warned:
-                _redis_warned = True
-                logger.warning(
-                    "Redis unavailable (%s); using in-memory search cache for this process.",
-                    e,
-                )
-            return None
-
-
 def invalidate_search_cache() -> None:
     """Call after any Chroma add/delete so cached results cannot be stale."""
     global _generation
-    r = _get_redis()
+    r = get_redis()
     if r is not None:
         try:
             r.incr(REDIS_VER_KEY)
@@ -99,7 +64,7 @@ def get_search_cached(
         return None
 
     dkey = _digest_key(query_norm, service_id, top_k)
-    r = _get_redis()
+    r = get_redis()
     if r is not None:
         try:
             ver_raw = r.get(REDIS_VER_KEY)
@@ -136,7 +101,7 @@ def set_search_cached(
         return
 
     dkey = _digest_key(query_norm, service_id, top_k)
-    r = _get_redis()
+    r = get_redis()
     if r is not None:
         ttl = max(60, int(getattr(settings, "search_cache_ttl_seconds", 86400)))
         try:
